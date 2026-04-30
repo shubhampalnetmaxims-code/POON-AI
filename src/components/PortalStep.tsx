@@ -27,16 +27,20 @@ import {
   FileText,
   Library,
   Sparkles,
-  Loader2
+  Loader2,
+  Users,
+  Receipt,
+  Download,
+  Calendar
 } from 'lucide-react';
-import { OrganizationDetails, PricingPlan, RolePlayScenario, UploadedPDF } from '../types.ts';
+import { OrganizationDetails, PricingPlan, RolePlayScenario, UploadedPDF, SubscriptionRecord, Transaction, Executive } from '../types.ts';
 import AiCoachChat from './AiCoachChat.tsx';
 import RolePlayView from './RolePlayView.tsx';
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-type PortalView = 'dashboard' | 'subscription' | 'organization' | 'settings' | 'coaching' | 'roleplay' | 'admin' | 'scenarios';
+type PortalView = 'dashboard' | 'subscription' | 'organization' | 'settings' | 'coaching' | 'roleplay' | 'admin' | 'scenarios' | 'subscriptions-admin' | 'executives';
 
 interface PortalStepProps {
   org: OrganizationDetails;
@@ -44,9 +48,13 @@ interface PortalStepProps {
   plans: PricingPlan[];
   scenarios: RolePlayScenario[];
   pdfs: UploadedPDF[];
+  subscriptions: SubscriptionRecord[];
+  executives: Executive[];
+  currentExecutive: Executive | null;
   onUpdatePlans: (plans: PricingPlan[]) => void;
   onUpdateScenarios: (scenarios: RolePlayScenario[]) => void;
   onUpdatePdfs: (pdfs: UploadedPDF[]) => void;
+  onUpdateExecutives: (executives: Executive[]) => void;
   onLogout: () => void;
   onUpdateOrg: (details: OrganizationDetails) => void;
   onUpdatePlan: (plan: PricingPlan) => void;
@@ -58,19 +66,27 @@ export default function PortalStep({
   plans, 
   scenarios,
   pdfs,
+  subscriptions,
+  executives,
+  currentExecutive,
   onUpdatePlans, 
   onUpdateScenarios,
   onUpdatePdfs,
+  onUpdateExecutives,
   onLogout, 
   onUpdateOrg, 
   onUpdatePlan 
 }: PortalStepProps & { key?: string }) {
-  const [activeView, setActiveView] = React.useState<PortalView>(org.isAdmin ? 'admin' : 'dashboard');
+  const [activeView, setActiveView] = React.useState<PortalView>(
+    org.isAdmin ? 'admin' : (currentExecutive ? 'dashboard' : 'dashboard')
+  );
+
+  const isExecutive = !!currentExecutive;
 
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard':
-        return <DashboardView org={org} plan={plan} onCoachingClick={() => setActiveView('coaching')} />;
+        return <DashboardView org={org} plan={plan} executives={executives} currentExecutive={currentExecutive} onCoachingClick={() => setActiveView('coaching')} />;
       case 'subscription':
         return <SubscriptionView plans={plans} currentPlan={plan} onUpdatePlan={onUpdatePlan} />;
       case 'organization':
@@ -78,9 +94,9 @@ export default function PortalStep({
       case 'settings':
         return <SettingsView />;
       case 'coaching':
-        return <AiCoachChat inline />;
+        return <AiCoachChat inline disabled={isExecutive && !currentExecutive?.hasAiAccess} />;
       case 'roleplay':
-        return <RolePlayView scenarios={scenarios} pdfs={pdfs} />;
+        return <RolePlayView scenarios={scenarios} pdfs={pdfs} disabled={isExecutive && !currentExecutive?.hasAiAccess} />;
       case 'admin':
         return <AdminView plans={plans} onUpdatePlans={onUpdatePlans} />;
       case 'scenarios':
@@ -92,8 +108,18 @@ export default function PortalStep({
             onUpdatePdfs={onUpdatePdfs} 
           />
         );
+      case 'subscriptions-admin':
+        return <SubscriptionManagementView subscriptions={subscriptions} />;
+      case 'executives':
+        return (
+          <ExecutiveManagementView 
+            executives={executives} 
+            onUpdateExecutives={onUpdateExecutives} 
+            maxExecutives={plan.maxEmployees || 0}
+          />
+        );
       default:
-        return <DashboardView org={org} plan={plan} onCoachingClick={() => setActiveView('coaching')} />;
+        return <DashboardView org={org} plan={plan} executives={executives} currentExecutive={currentExecutive} onCoachingClick={() => setActiveView('coaching')} />;
     }
   };
 
@@ -123,6 +149,39 @@ export default function PortalStep({
                 active={activeView === 'scenarios'} 
                 onClick={() => setActiveView('scenarios')}
               />
+              <NavItem 
+                icon={<Receipt />} 
+                label="Subscription Mgmt" 
+                active={activeView === 'subscriptions-admin'} 
+                onClick={() => setActiveView('subscriptions-admin')}
+              />
+            </>
+          ) : isExecutive ? (
+            <>
+              <NavItem 
+                icon={<LayoutDashboard />} 
+                label="Dashboard" 
+                active={activeView === 'dashboard'} 
+                onClick={() => setActiveView('dashboard')}
+              />
+              <NavItem 
+                icon={<Bot />} 
+                label="AI Coaching" 
+                active={activeView === 'coaching'} 
+                onClick={() => setActiveView('coaching')}
+              />
+              <NavItem 
+                icon={<Dices />} 
+                label="Role Plays" 
+                active={activeView === 'roleplay'} 
+                onClick={() => setActiveView('roleplay')}
+              />
+              <NavItem 
+                icon={<Settings />} 
+                label="Settings" 
+                active={activeView === 'settings'} 
+                onClick={() => setActiveView('settings')}
+              />
             </>
           ) : (
             <>
@@ -143,6 +202,12 @@ export default function PortalStep({
                 label="Role Plays" 
                 active={activeView === 'roleplay'} 
                 onClick={() => setActiveView('roleplay')}
+              />
+              <NavItem 
+                icon={<Users />} 
+                label="Executives" 
+                active={activeView === 'executives'} 
+                onClick={() => setActiveView('executives')}
               />
               <NavItem 
                 icon={<CreditCard />} 
@@ -180,8 +245,8 @@ export default function PortalStep({
       </aside>
 
       {/* Main Content */}
-      <main className={`ml-64 flex-grow ${['coaching', 'roleplay', 'admin', 'scenarios'].includes(activeView) ? 'p-0' : 'px-12 py-10'}`}>
-        {!['coaching', 'roleplay', 'admin', 'scenarios'].includes(activeView) && (
+      <main className={`ml-64 flex-grow ${['coaching', 'roleplay', 'admin', 'scenarios', 'subscriptions-admin', 'executives'].includes(activeView) ? 'p-0' : 'px-12 py-10'}`}>
+        {!['coaching', 'roleplay', 'admin', 'scenarios', 'subscriptions-admin', 'executives'].includes(activeView) && (
           <header className="flex justify-between items-center mb-12">
             <div>
               <h1 className="text-2xl font-black tracking-tight text-text-main">
@@ -218,28 +283,35 @@ export default function PortalStep({
   );
 }
 
-function DashboardView({ org, plan, onCoachingClick }: { org: OrganizationDetails, plan: PricingPlan, onCoachingClick: () => void }) {
+function DashboardView({ org, plan, executives, currentExecutive, onCoachingClick }: { org: OrganizationDetails, plan: PricingPlan, executives: Executive[], currentExecutive: Executive | null, onCoachingClick: () => void }) {
+  const isExecutive = !!currentExecutive;
+  const hasAiAccess = currentExecutive ? currentExecutive.hasAiAccess : true;
+
   return (
     <div className="space-y-12">
       {/* Feature Options Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
         <motion.div 
-          whileHover={{ y: -4 }}
-          onClick={onCoachingClick}
-          className="bg-primary text-white p-8 rounded-2xl shadow-xl shadow-primary/20 relative group overflow-hidden cursor-pointer"
+          whileHover={hasAiAccess ? { y: -4 } : {}}
+          onClick={hasAiAccess ? onCoachingClick : undefined}
+          className={`p-8 rounded-2xl shadow-xl relative group overflow-hidden ${hasAiAccess ? 'bg-primary text-white cursor-pointer shadow-primary/20' : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'}`}
         >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10 blur-2xl group-hover:bg-white/10 transition-colors"></div>
-          <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-6">
+          {hasAiAccess && <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10 blur-2xl group-hover:bg-white/10 transition-colors"></div>}
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-6 ${hasAiAccess ? 'bg-white/10' : 'bg-gray-300'}`}>
             <Bot className="w-6 h-6" />
           </div>
           <h2 className="text-2xl font-black mb-3 tracking-tight">24/7 AI Executive Coach</h2>
-          <p className="text-white/70 text-sm leading-relaxed mb-8 max-w-sm">
-            Connect instantly with a professional certified executive coach for strategic guidance and leadership support.
+          <p className={`${hasAiAccess ? 'text-white/70' : 'text-gray-400'} text-sm leading-relaxed mb-8 max-w-sm`}>
+            {hasAiAccess 
+              ? 'Connect instantly with a professional certified executive coach for strategic guidance and leadership support.'
+              : 'AI Coaching features are restricted for your account. Please contact your HR administrator for access.'}
           </p>
-          <button className="px-6 py-3 bg-white text-primary rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-colors flex items-center gap-2">
-            Start Coaching Session
-            <ArrowUpRight className="w-4 h-4" />
-          </button>
+          {hasAiAccess && (
+            <button className="px-6 py-3 bg-white text-primary rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-gray-50 transition-colors flex items-center gap-2">
+              Start Coaching Session
+              <ArrowUpRight className="w-4 h-4" />
+            </button>
+          )}
         </motion.div>
 
         <motion.div 
@@ -261,39 +333,44 @@ function DashboardView({ org, plan, onCoachingClick }: { org: OrganizationDetail
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-        <StatCard 
-          label="Active Plan" 
-          value={plan.name} 
-          trend="Current" 
-          sub={`Billed $${plan.price}/month`}
-        />
-        <StatCard 
-          label="Team Size" 
-          value={org.employeeCount} 
-          trend="+0%" 
-          sub="Member accounts"
-        />
-        <StatCard 
-          label="Storage Use" 
-          value="14.2 GB" 
-          trend="Low" 
-          sub="Of 100GB limit"
-        />
-      </div>
+      {!isExecutive && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+          <StatCard 
+            label="Active Plan" 
+            value={plan.name} 
+            trend="Current" 
+            sub={`Billed $${plan.price}/month`}
+          />
+          <StatCard 
+            label="Executive Fleet" 
+            value={`${executives.length}/${plan.maxEmployees || '∞'}`} 
+            trend={`${((executives.length / (plan.maxEmployees || 1)) * 100).toFixed(0)}%`} 
+            sub="Fleet capacity used"
+          />
+          <StatCard 
+            label="AI Resources" 
+            value={executives.filter(e => e.hasAiAccess).length.toString()} 
+            trend="Active" 
+            sub="AI enabled accounts"
+          />
+        </div>
+      )}
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-surface rounded-xl p-8 border border-border shadow-sm">
           <div className="flex justify-between items-center mb-8 pb-4 border-b border-border">
-            <h3 className="font-bold text-sm uppercase tracking-widest text-text-muted">Organization Profile</h3>
+            <h3 className="font-bold text-sm uppercase tracking-widest text-text-muted">
+              {isExecutive ? 'My Profile' : 'Organization Profile'}
+            </h3>
           </div>
           
           <div className="grid md:grid-cols-2 gap-x-12 gap-y-8">
-            <InfoItem label="Admin Email" value={org.email} />
-            <InfoItem label="Billing Address" value={org.billingAddress} />
-            <InfoItem label="Member Cap" value={plan.maxEmployees ? `${plan.maxEmployees} members` : 'Unlimited'} />
+            <InfoItem label={isExecutive ? "Full Name" : "Admin Email"} value={isExecutive ? currentExecutive?.name : org.email} />
+            <InfoItem label={isExecutive ? "Login ID" : "Billing Address"} value={isExecutive ? currentExecutive?.loginId : org.billingAddress} />
+            {!isExecutive && <InfoItem label="Member Cap" value={plan.maxEmployees ? `${plan.maxEmployees} members` : 'Unlimited'} />}
             <InfoItem label="Infrastructure" value="AWS (Northern Virginia)" />
+            {isExecutive && <InfoItem label="Support Tier" value="24/7 Concierge" />}
           </div>
         </div>
 
@@ -307,13 +384,15 @@ function DashboardView({ org, plan, onCoachingClick }: { org: OrganizationDetail
             </div>
           </div>
           
-          <div className="bg-primary text-white rounded-xl p-8 shadow-xl shadow-primary/10 flex flex-col">
-            <h3 className="font-bold text-sm uppercase tracking-widest mb-8 opacity-80">Quick Actions</h3>
-            <div className="space-y-3 flex-grow">
-              <ActionButton icon={<Plus className="w-4 h-4" />} label="Invite Member" />
-              <ActionButton icon={<Settings className="w-4 h-4" />} label="Workspace Settings" />
+          {!isExecutive && (
+            <div className="bg-primary text-white rounded-xl p-8 shadow-xl shadow-primary/10 flex flex-col">
+              <h3 className="font-bold text-sm uppercase tracking-widest mb-8 opacity-80">Quick Actions</h3>
+              <div className="space-y-3 flex-grow">
+                <ActionButton icon={<Plus className="w-4 h-4" />} label="Invite Member" />
+                <ActionButton icon={<Settings className="w-4 h-4" />} label="Workspace Settings" />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -716,6 +795,182 @@ function AdminView({ plans, onUpdatePlans }: { plans: PricingPlan[], onUpdatePla
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SubscriptionManagementView({ subscriptions }: { subscriptions: SubscriptionRecord[] }) {
+  const [selectedClient, setSelectedClient] = React.useState<SubscriptionRecord | null>(null);
+
+  const totalRevenue = subscriptions.reduce((acc, sub) => acc + sub.amount, 0);
+  const activeSubscriptions = subscriptions.filter(s => s.status === 'Active').length;
+
+  return (
+    <div className="h-full flex flex-col bg-gray-50/30 font-sans">
+      <div className="p-12 max-w-7xl mx-auto w-full flex-grow overflow-y-auto">
+        <div className="flex justify-between items-end mb-12">
+          <div>
+            <h2 className="text-4xl font-black tracking-tight text-text-main mb-4 italic uppercase">Client Subscriptions</h2>
+            <p className="text-text-muted font-bold text-xs uppercase tracking-widest">Global Revenue & Entitlement Registry</p>
+          </div>
+          <button 
+            className="px-6 py-3 bg-primary text-white rounded-lg font-black text-[10px] uppercase tracking-widest hover:shadow-xl shadow-primary/20 transition-all flex items-center gap-2"
+            onClick={() => alert('Bulk download feature would trigger here in production')}
+          >
+            <Download className="w-4 h-4" />
+            Bulk Export Invoices
+          </button>
+        </div>
+
+        {/* Stats Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+          <StatCard label="Total Annual Revenue" value={`$${(totalRevenue * 12).toLocaleString()}`} trend="+12.4%" sub="Projected ARR" />
+          <StatCard label="Active Subscriptions" value={activeSubscriptions.toString()} trend="+3" sub="Current paying clients" />
+          <StatCard label="Monthly Revenue" value={`$${totalRevenue.toLocaleString()}`} trend="+5.2%" sub="Current MRR" />
+          <StatCard label="Avg Ticket Size" value={`$${(totalRevenue / subscriptions.length).toFixed(0)}`} trend="Stable" sub="Per organization" />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+          {/* Client List */}
+          <div className="lg:col-span-2 space-y-6">
+            <h3 className="text-xs font-black uppercase tracking-widest text-text-muted px-4">Active Clients</h3>
+            <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-sm">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-border">
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Client / Plan</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Status</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Amount</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Validity</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {subscriptions.map((sub) => (
+                    <tr 
+                      key={sub.id} 
+                      className={`hover:bg-gray-50/50 transition-colors cursor-pointer ${selectedClient?.id === sub.id ? 'bg-primary/5' : ''}`}
+                      onClick={() => setSelectedClient(sub)}
+                    >
+                      <td className="px-6 py-5">
+                        <div className="font-black text-sm">{sub.clientName}</div>
+                        <div className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-0.5">{sub.planName}</div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${
+                          sub.status === 'Active' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                        }`}>
+                          {sub.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="font-black text-sm text-primary">${sub.amount}</div>
+                        <div className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">per month</div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="text-[10px] font-bold text-text-main">Expires: {new Date(sub.expiryDate).toLocaleDateString()}</div>
+                        <div className="text-[9px] font-medium text-text-muted">Purchased: {new Date(sub.purchaseDate).toLocaleDateString()}</div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <button className="p-2 text-text-muted hover:text-primary transition-colors">
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Details Sidebar */}
+          <div className="lg:col-span-1">
+            <AnimatePresence mode="wait">
+              {selectedClient ? (
+                <motion.div 
+                  key={selectedClient.id}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  className="bg-white border border-border rounded-2xl p-8 shadow-xl sticky top-8"
+                >
+                  <div className="flex justify-between items-start mb-8">
+                    <div className="w-12 h-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center font-black text-lg">
+                      {selectedClient.clientName.substring(0,1)}
+                    </div>
+                    <button 
+                      onClick={() => setSelectedClient(null)}
+                      className="text-text-muted hover:text-text-main transition-colors"
+                    >
+                      <Plus className="w-4 h-4 rotate-45" />
+                    </button>
+                  </div>
+
+                  <h3 className="text-2xl font-black tracking-tight mb-1">{selectedClient.clientName}</h3>
+                  <p className="text-xs text-text-muted font-bold mb-8 uppercase tracking-widest">{selectedClient.clientEmail}</p>
+
+                  <div className="space-y-6 mb-10">
+                    <div className="p-4 bg-gray-50 rounded-xl border border-border">
+                      <div className="text-[9px] font-black uppercase tracking-widest text-text-muted mb-2">Subscription Details</div>
+                      <div className="flex justify-between items-end">
+                        <div>
+                          <div className="text-sm font-black">{selectedClient.planName}</div>
+                          <div className="text-[10px] font-medium text-text-muted">Monthly billing cycling</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-black text-primary">${selectedClient.amount}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-text-muted mb-4 block">Payment History</h4>
+                      <div className="space-y-3">
+                        {selectedClient.paymentHistory.map((inv) => (
+                          <div key={inv.id} className="flex justify-between items-center p-3 bg-white border border-border rounded-lg group hover:border-primary transition-all">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-gray-50 rounded-lg text-text-muted group-hover:text-primary transition-colors">
+                                <Receipt className="w-3.5 h-3.5" />
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-black">{inv.id}</div>
+                                <div className="text-[9px] font-medium text-text-muted">{new Date(inv.date).toLocaleDateString()}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <div className="text-[10px] font-black">${inv.amount}</div>
+                                <div className="text-[8px] font-bold text-green-500 uppercase">{inv.status}</div>
+                              </div>
+                              <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary/5 rounded-md transition-all">
+                                <Download className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button className="w-full py-4 bg-primary text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:shadow-lg shadow-primary/10 transition-all">
+                    Generate Consolidated Statement
+                  </button>
+                </motion.div>
+              ) : (
+                <div className="h-[400px] border-2 border-dashed border-border rounded-2xl flex flex-col items-center justify-center p-12 text-center bg-white/50">
+                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6">
+                    <Users className="w-8 h-8" />
+                  </div>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-text-muted mb-2">Select a Client</h4>
+                  <p className="text-[10px] font-medium text-text-muted leading-relaxed">
+                    Choose a subscription record from the list to view detailed payment history and manage invoices.
+                  </p>
+                </div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
@@ -1154,6 +1409,291 @@ function ScenarioManagementView({
                   Generate
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ExecutiveManagementView({ 
+  executives, 
+  onUpdateExecutives, 
+  maxExecutives 
+}: { 
+  executives: Executive[], 
+  onUpdateExecutives: (e: Executive[]) => void, 
+  maxExecutives: number 
+}) {
+  const [isAdding, setIsAdding] = React.useState(false);
+  const [formData, setFormData] = React.useState({
+    name: '',
+    email: '',
+    phone: '',
+    hasAiAccess: true
+  });
+
+  const remainingSlots = maxExecutives - executives.length;
+
+  const handleAddExecutive = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (executives.length >= maxExecutives) {
+      alert("Executive limit reached for your current plan. Please upgrade to add more.");
+      return;
+    }
+
+    const newExecutive: Executive = {
+      id: Date.now().toString(),
+      ...formData,
+      loginId: formData.email.split('@')[0] + Math.floor(100 + Math.random() * 900),
+      password: Math.random().toString(36).slice(-8).toUpperCase(),
+      status: 'Active',
+      addedAt: Date.now()
+    };
+
+    onUpdateExecutives([...executives, newExecutive]);
+    setIsAdding(false);
+    setFormData({ name: '', email: '', phone: '', hasAiAccess: true });
+  };
+
+  const toggleStatus = (id: string) => {
+    onUpdateExecutives(executives.map(e => 
+      e.id === id ? { ...e, status: e.status === 'Active' ? 'Inactive' : 'Active' } : e
+    ));
+  };
+
+  const toggleAiAccess = (id: string) => {
+    onUpdateExecutives(executives.map(e => 
+      e.id === id ? { ...e, hasAiAccess: !e.hasAiAccess } : e
+    ));
+  };
+
+  const deleteExecutive = (id: string) => {
+    if (window.confirm("Are you sure you want to remove this executive account?")) {
+      onUpdateExecutives(executives.filter(e => e.id !== id));
+    }
+  };
+
+  return (
+    <div className="h-full flex flex-col bg-gray-50/30 font-sans">
+      <div className="p-12 max-w-7xl mx-auto w-full flex-grow overflow-y-auto">
+        <div className="flex justify-between items-end mb-12">
+          <div>
+            <h2 className="text-4xl font-black tracking-tight text-text-main mb-4 italic uppercase">Executive Fleet</h2>
+            <p className="text-text-muted font-bold text-xs uppercase tracking-widest">Manage User Permissions & Neural Access</p>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <div className="text-[10px] font-black uppercase tracking-widest text-text-muted mb-1">Fleet Capacity</div>
+              <div className="flex items-center gap-2">
+                <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-primary transition-all duration-500" 
+                    style={{ width: `${(executives.length / maxExecutives) * 100}%` }}
+                  ></div>
+                </div>
+                <span className="text-xs font-black">{executives.length}/{maxExecutives}</span>
+              </div>
+            </div>
+            <button 
+              onClick={() => setIsAdding(true)}
+              disabled={executives.length >= maxExecutives}
+              className={`px-6 py-3 bg-primary text-white rounded-lg font-black text-[10px] uppercase tracking-widest shadow-xl shadow-primary/20 transition-all flex items-center gap-2 ${executives.length >= maxExecutives ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
+            >
+              <Plus className="w-4 h-4" />
+              Add Executive
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-12">
+          <div className="space-y-6">
+            <div className="flex justify-between items-center px-4">
+              <h3 className="text-xs font-black uppercase tracking-widest text-text-muted">Registered Executives ({executives.length})</h3>
+              {remainingSlots > 0 && (
+                <span className="text-[10px] font-bold text-primary italic">You have {remainingSlots} slots remaining</span>
+              )}
+            </div>
+
+            <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-sm">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-border">
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Executive Identity</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Portal Credentials</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">AI Permissions</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Status</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted text-right">Operations</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {executives.map((exe) => (
+                    <tr key={exe.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-primary/5 text-primary rounded-full flex items-center justify-center font-black text-sm">
+                            {exe.name.substring(0,1)}
+                          </div>
+                          <div>
+                            <div className="font-black text-sm">{exe.name}</div>
+                            <div className="text-[10px] font-medium text-text-muted">{exe.email}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">ID:</span>
+                            <code className="text-[10px] font-black bg-gray-100 px-1.5 py-0.5 rounded">{exe.loginId}</code>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Pass:</span>
+                            <code className="text-[10px] font-black bg-gray-100 px-1.5 py-0.5 rounded">{exe.password}</code>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <button 
+                          onClick={() => toggleAiAccess(exe.id)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
+                            exe.hasAiAccess 
+                              ? 'bg-indigo-50 border-primary/20 text-primary' 
+                              : 'bg-gray-50 border-border text-text-muted'
+                          }`}
+                        >
+                          <Bot className={`w-3.5 h-3.5 ${exe.hasAiAccess ? 'animate-pulse' : ''}`} />
+                          <span className="text-[10px] font-black uppercase tracking-widest">
+                            {exe.hasAiAccess ? 'AI Enabled' : 'AI Restricted'}
+                          </span>
+                        </button>
+                      </td>
+                      <td className="px-6 py-5">
+                         <button 
+                          onClick={() => toggleStatus(exe.id)}
+                          className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${
+                            exe.status === 'Active' 
+                              ? 'bg-green-100 text-green-600 hover:bg-green-200' 
+                              : 'bg-red-100 text-red-600 hover:bg-red-200'
+                          }`}
+                        >
+                          {exe.status}
+                        </button>
+                      </td>
+                      <td className="px-6 py-5 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button 
+                            onClick={() => deleteExecutive(exe.id)}
+                            className="p-2 text-text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {executives.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-20 text-center">
+                        <div className="flex flex-col items-center justify-center opacity-40">
+                          <Users className="w-12 h-12 mb-4" />
+                          <p className="text-sm font-black uppercase tracking-widest">No executives deployed yet</p>
+                          <p className="text-xs font-bold mt-2">Scale your leadership team by adding new executives above.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Add Executive Modal */}
+      <AnimatePresence>
+        {isAdding && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl p-10 max-w-lg w-full shadow-2xl border border-border"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-2xl font-black italic uppercase tracking-tighter">Deploy New Executive</h3>
+                <button onClick={() => setIsAdding(false)} className="text-text-muted hover:text-text-main transition-colors">
+                  <Plus className="w-6 h-6 rotate-45" />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddExecutive} className="space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Full Identity Name</label>
+                    <input 
+                      required
+                      placeholder="e.g. Sarah Jenkins"
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      className="w-full px-5 py-3 border border-border rounded-xl text-sm font-bold focus:border-primary focus:outline-none transition-all hover:border-gray-300"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Work Email</label>
+                      <input 
+                        required
+                        type="email"
+                        placeholder="jenkins@company.com"
+                        value={formData.email}
+                        onChange={e => setFormData({...formData, email: e.target.value})}
+                        className="w-full px-5 py-3 border border-border rounded-xl text-sm font-bold focus:border-primary focus:outline-none transition-all hover:border-gray-300"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Direct Phone</label>
+                      <input 
+                        required
+                        placeholder="+1 (555) 000-0000"
+                        value={formData.phone}
+                        onChange={e => setFormData({...formData, phone: e.target.value})}
+                        className="w-full px-5 py-3 border border-border rounded-xl text-sm font-bold focus:border-primary focus:outline-none transition-all hover:border-gray-300"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 bg-indigo-50 border border-primary/20 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-tight text-primary">Provision AI Capability</h4>
+                    <p className="text-[10px] font-medium text-text-muted mt-1">Grant 24/7 access to AI Coaching & Roleplay features.</p>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setFormData({...formData, hasAiAccess: !formData.hasAiAccess})}
+                    className={`w-12 h-6 rounded-full relative transition-all duration-300 ${formData.hasAiAccess ? 'bg-primary' : 'bg-gray-300'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${formData.hasAiAccess ? 'left-7' : 'left-1'}`}></div>
+                  </button>
+                </div>
+
+                <div className="pt-4 flex gap-4">
+                  <button 
+                    type="button"
+                    onClick={() => setIsAdding(false)}
+                    className="flex-1 py-4 border border-border rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                  >
+                    Cancel Provisioning
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-4 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:shadow-2xl shadow-primary/30 transition-all font-sans"
+                  >
+                    Initialize Account
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

@@ -12,11 +12,29 @@ import { ChatMessage } from '../types.ts';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-export default function AiCoachChat({ inline = false }: { inline?: boolean }) {
+export default function AiCoachChat({ inline = false, disabled = false }: { inline?: boolean, disabled?: boolean }) {
   const [sessions, setSessions] = useState<{id: string, title: string, messages: ChatMessage[]}[]>(() => {
     const saved = localStorage.getItem('nexus_chat_sessions');
     return saved ? JSON.parse(saved) : [{ id: '1', title: 'New Strategic Discussion', messages: [] }];
   });
+  
+  if (disabled) {
+    if (inline) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center bg-gray-50 p-12 text-center font-sans">
+          <div className="w-20 h-20 bg-gray-200 text-gray-400 rounded-2xl flex items-center justify-center mb-8">
+            <Bot className="w-10 h-10" />
+          </div>
+          <h2 className="text-3xl font-black italic uppercase tracking-tighter text-text-main mb-4">Neural Access Restricted</h2>
+          <p className="text-text-muted max-w-sm font-bold text-sm leading-relaxed">
+            Your organization has restricted AI coaching capabilities for this account. Please connect with your HR administrator to provision neural access.
+          </p>
+        </div>
+      );
+    }
+    return null;
+  }
+
   const [activeSessionId, setActiveSessionId] = useState(sessions[0].id);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);

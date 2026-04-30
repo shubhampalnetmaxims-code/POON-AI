@@ -22,8 +22,23 @@ import { ROLE_PLAY_SCENARIOS } from '../constants.ts';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-export default function RolePlayView({ scenarios, pdfs }: { scenarios: RolePlayScenario[], pdfs: UploadedPDF[] }) {
+export default function RolePlayView({ scenarios, pdfs, disabled = false }: { scenarios: RolePlayScenario[], pdfs: UploadedPDF[], disabled?: boolean }) {
   const [selectedScenario, setSelectedScenario] = useState<RolePlayScenario | null>(null);
+  
+  if (disabled) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-gray-50 p-12 text-center font-sans">
+        <div className="w-20 h-20 bg-gray-200 text-gray-400 rounded-2xl flex items-center justify-center mb-8">
+          <MessageSquare className="w-10 h-10" />
+        </div>
+        <h2 className="text-3xl font-black italic uppercase tracking-tighter text-text-main mb-4">Simulation Access Restricted</h2>
+        <p className="text-text-muted max-w-sm font-bold text-sm leading-relaxed">
+          Dynamic role-play simulations are restricted for your current profile. Please consult your executive dashboard or contact system administration for neural entitlement.
+        </p>
+      </div>
+    );
+  }
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);

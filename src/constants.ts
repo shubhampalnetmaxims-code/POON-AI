@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { PricingPlan, RolePlayScenario } from './types.ts';
+import { PricingPlan, RolePlayScenario, SubscriptionRecord } from './types.ts';
 
 export const SUBSCRIPTION_PLANS: PricingPlan[] = [
   {
@@ -56,6 +56,54 @@ export const SUBSCRIPTION_PLANS: PricingPlan[] = [
     cta: 'Contact Sales',
     maxEmployees: 1000,
     pricePerEmployee: 0.10
+  }
+];
+
+export const MOCK_SUBSCRIPTIONS: SubscriptionRecord[] = [
+  {
+    id: 'sub1',
+    clientName: 'Acme Corp',
+    clientEmail: 'billing@acme.com',
+    planName: 'Pro Plan',
+    amount: 149.00,
+    purchaseDate: Date.now() - (30 * 24 * 60 * 60 * 1000), // 30 days ago
+    expiryDate: Date.now() + (335 * 24 * 60 * 60 * 1000), // ~11 months from now
+    status: 'Active',
+    paymentHistory: [
+      {
+        id: 'inv-001',
+        date: Date.now() - (30 * 24 * 60 * 60 * 1000),
+        amount: 149.00,
+        status: 'Paid',
+        invoiceUrl: '#'
+      }
+    ]
+  },
+  {
+    id: 'sub2',
+    clientName: 'Stark Industries',
+    clientEmail: 'pepper@stark.com',
+    planName: 'Enterprise Plan',
+    amount: 599.00,
+    purchaseDate: Date.now() - (60 * 24 * 60 * 60 * 1000),
+    expiryDate: Date.now() + (305 * 24 * 60 * 60 * 1000),
+    status: 'Active',
+    paymentHistory: [
+      {
+        id: 'inv-002',
+        date: Date.now() - (60 * 24 * 60 * 60 * 1000),
+        amount: 599.00,
+        status: 'Paid',
+        invoiceUrl: '#'
+      },
+      {
+        id: 'inv-003',
+        date: Date.now() - (30 * 24 * 60 * 60 * 1000),
+        amount: 599.00,
+        status: 'Paid',
+        invoiceUrl: '#'
+      }
+    ]
   }
 ];
 

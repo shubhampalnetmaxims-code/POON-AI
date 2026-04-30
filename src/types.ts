@@ -45,4 +45,37 @@ export interface UploadedPDF {
   extractedContext?: string;
 }
 
+export interface Transaction {
+  id: string;
+  date: number;
+  amount: number;
+  status: 'Paid' | 'Pending' | 'Failed';
+  invoiceUrl: string;
+}
+
+export interface SubscriptionRecord {
+  id: string;
+  clientName: string;
+  clientEmail: string;
+  planName: string;
+  amount: number;
+  purchaseDate: number;
+  expiryDate: number;
+  status: 'Active' | 'Expired' | 'Cancelled';
+  paymentHistory: Transaction[];
+}
+
+export interface Executive {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  loginId: string;
+  password: string;
+  hasAiAccess: boolean;
+  status: 'Active' | 'Inactive';
+  lastActive?: number;
+  addedAt: number;
+}
+
 export type AppStep = 'landing' | 'onboarding' | 'payment' | 'portal';
