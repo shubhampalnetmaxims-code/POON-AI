@@ -9,12 +9,11 @@ import { Building2, Mail, MapPin, Users, ArrowRight, ArrowLeft } from 'lucide-re
 import { OrganizationDetails, PricingPlan } from '../types.ts';
 
 interface OnboardingStepProps {
-  plans: PricingPlan[];
   onComplete: (details: OrganizationDetails) => void;
   onBack: () => void;
 }
 
-export default function OnboardingStep({ plans, onComplete, onBack }: OnboardingStepProps & { key?: string }) {
+export default function OnboardingStep({ onComplete, onBack }: OnboardingStepProps & { key?: string }) {
   const [formData, setFormData] = useState<OrganizationDetails>({
     name: '',
     email: '',

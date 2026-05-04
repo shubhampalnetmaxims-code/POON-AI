@@ -78,4 +78,4 @@ export interface Executive {
   addedAt: number;
 }
 
-export type AppStep = 'landing' | 'onboarding' | 'payment' | 'portal';
+export type AppStep = 'landing' | 'user-type' | 'onboarding' | 'onboarding-individual' | 'payment' | 'portal';

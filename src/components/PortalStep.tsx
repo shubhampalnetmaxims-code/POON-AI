@@ -31,7 +31,9 @@ import {
   Users,
   Receipt,
   Download,
-  Calendar
+  Calendar,
+  Ban,
+  CheckCircle2
 } from 'lucide-react';
 import { OrganizationDetails, PricingPlan, RolePlayScenario, UploadedPDF, SubscriptionRecord, Transaction, Executive } from '../types.ts';
 import AiCoachChat from './AiCoachChat.tsx';
@@ -40,7 +42,7 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-type PortalView = 'dashboard' | 'subscription' | 'organization' | 'settings' | 'coaching' | 'roleplay' | 'admin' | 'scenarios' | 'subscriptions-admin' | 'executives';
+type PortalView = 'dashboard' | 'subscription' | 'organization' | 'settings' | 'coaching' | 'roleplay' | 'admin' | 'scenarios' | 'subscriptions-admin' | 'executives' | 'clients';
 
 interface PortalStepProps {
   org: OrganizationDetails;
@@ -82,11 +84,23 @@ export default function PortalStep({
   );
 
   const isExecutive = !!currentExecutive;
+  const isIndividual = org.name === 'Personal Account';
 
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard':
-        return <DashboardView org={org} plan={plan} executives={executives} currentExecutive={currentExecutive} onCoachingClick={() => setActiveView('coaching')} />;
+        return (
+          <DashboardView 
+            org={org} 
+            plan={plan} 
+            executives={executives} 
+            pdfs={pdfs}
+            scenarios={scenarios}
+            currentExecutive={currentExecutive} 
+            onCoachingClick={() => setActiveView('coaching')} 
+            onScenariosClick={() => setActiveView('scenarios')}
+          />
+        );
       case 'subscription':
         return <SubscriptionView plans={plans} currentPlan={plan} onUpdatePlan={onUpdatePlan} />;
       case 'organization':
@@ -118,8 +132,21 @@ export default function PortalStep({
             maxExecutives={plan.maxEmployees || 0}
           />
         );
+      case 'clients':
+        return <ClientsView />;
       default:
-        return <DashboardView org={org} plan={plan} executives={executives} currentExecutive={currentExecutive} onCoachingClick={() => setActiveView('coaching')} />;
+        return (
+          <DashboardView 
+            org={org} 
+            plan={plan} 
+            executives={executives} 
+            pdfs={pdfs}
+            scenarios={scenarios}
+            currentExecutive={currentExecutive} 
+            onCoachingClick={() => setActiveView('coaching')} 
+            onScenariosClick={() => setActiveView('scenarios')}
+          />
+        );
     }
   };
 
@@ -138,10 +165,22 @@ export default function PortalStep({
           {org.isAdmin ? (
             <>
               <NavItem 
+                icon={<LayoutDashboard />} 
+                label="Summary" 
+                active={activeView === 'dashboard'} 
+                onClick={() => setActiveView('dashboard')}
+              />
+              <NavItem 
                 icon={<ShieldCheck />} 
                 label="Subscription Plans" 
                 active={activeView === 'admin'} 
                 onClick={() => setActiveView('admin')}
+              />
+              <NavItem 
+                icon={<Users />} 
+                label="Clients" 
+                active={activeView === 'clients'} 
+                onClick={() => setActiveView('clients')}
               />
               <NavItem 
                 icon={<Sparkles />} 
@@ -175,6 +214,39 @@ export default function PortalStep({
                 label="Role Plays" 
                 active={activeView === 'roleplay'} 
                 onClick={() => setActiveView('roleplay')}
+              />
+              <NavItem 
+                icon={<Settings />} 
+                label="Settings" 
+                active={activeView === 'settings'} 
+                onClick={() => setActiveView('settings')}
+              />
+            </>
+          ) : isIndividual ? (
+            <>
+              <NavItem 
+                icon={<LayoutDashboard />} 
+                label="Dashboard" 
+                active={activeView === 'dashboard'} 
+                onClick={() => setActiveView('dashboard')}
+              />
+              <NavItem 
+                icon={<Bot />} 
+                label="AI Coaching" 
+                active={activeView === 'coaching'} 
+                onClick={() => setActiveView('coaching')}
+              />
+              <NavItem 
+                icon={<Dices />} 
+                label="Role Plays" 
+                active={activeView === 'roleplay'} 
+                onClick={() => setActiveView('roleplay')}
+              />
+              <NavItem 
+                icon={<Receipt />} 
+                label="Subscription" 
+                active={activeView === 'subscription'} 
+                onClick={() => setActiveView('subscription')}
               />
               <NavItem 
                 icon={<Settings />} 
@@ -283,8 +355,27 @@ export default function PortalStep({
   );
 }
 
-function DashboardView({ org, plan, executives, currentExecutive, onCoachingClick }: { org: OrganizationDetails, plan: PricingPlan, executives: Executive[], currentExecutive: Executive | null, onCoachingClick: () => void }) {
+function DashboardView({ 
+  org, 
+  plan, 
+  executives, 
+  pdfs = [], 
+  scenarios = [], 
+  currentExecutive, 
+  onCoachingClick,
+  onScenariosClick
+}: { 
+  org: OrganizationDetails, 
+  plan: PricingPlan, 
+  executives: Executive[], 
+  pdfs: UploadedPDF[],
+  scenarios: RolePlayScenario[],
+  currentExecutive: Executive | null, 
+  onCoachingClick: () => void,
+  onScenariosClick: () => void
+}) {
   const isExecutive = !!currentExecutive;
+  const isIndividual = org.name === 'Personal Account';
   const hasAiAccess = currentExecutive ? currentExecutive.hasAiAccess : true;
 
   return (
@@ -333,7 +424,7 @@ function DashboardView({ org, plan, executives, currentExecutive, onCoachingClic
       </div>
 
       {/* Stats Grid */}
-      {!isExecutive && (
+      {!isExecutive && !isIndividual && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
           <StatCard 
             label="Active Plan" 
@@ -358,20 +449,63 @@ function DashboardView({ org, plan, executives, currentExecutive, onCoachingClic
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-surface rounded-xl p-8 border border-border shadow-sm">
-          <div className="flex justify-between items-center mb-8 pb-4 border-b border-border">
-            <h3 className="font-bold text-sm uppercase tracking-widest text-text-muted">
-              {isExecutive ? 'My Profile' : 'Organization Profile'}
-            </h3>
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-surface rounded-xl p-8 border border-border shadow-sm">
+            <div className="flex justify-between items-center mb-8 pb-4 border-b border-border">
+              <h3 className="font-bold text-sm uppercase tracking-widest text-text-muted">
+                {isExecutive ? 'My Profile' : isIndividual ? 'Personal Profile' : 'Organization Profile'}
+              </h3>
+            </div>
+            
+            <div className="grid md:grid-cols-2 gap-x-12 gap-y-8">
+              <InfoItem label={isExecutive ? "Full Name" : isIndividual ? "Email Account" : "Admin Email"} value={isExecutive ? currentExecutive?.name : org.email} />
+              <InfoItem label={isExecutive ? "Login ID" : isIndividual ? "Account ID" : "Billing Address"} value={isExecutive ? currentExecutive?.loginId : isIndividual ? `#${org.email.split('@')[0]}` : org.billingAddress} />
+              {!isExecutive && !isIndividual && <InfoItem label="Member Cap" value={plan.maxEmployees ? `${plan.maxEmployees} members` : 'Unlimited'} />}
+              <InfoItem label="Infrastructure" value="AWS (Northern Virginia)" />
+              {isExecutive && <InfoItem label="Support Tier" value="24/7 Concierge" />}
+              {isIndividual && <InfoItem label="Neural Nodes" value="Dedicated v100 Cluster" />}
+            </div>
           </div>
-          
-          <div className="grid md:grid-cols-2 gap-x-12 gap-y-8">
-            <InfoItem label={isExecutive ? "Full Name" : "Admin Email"} value={isExecutive ? currentExecutive?.name : org.email} />
-            <InfoItem label={isExecutive ? "Login ID" : "Billing Address"} value={isExecutive ? currentExecutive?.loginId : org.billingAddress} />
-            {!isExecutive && <InfoItem label="Member Cap" value={plan.maxEmployees ? `${plan.maxEmployees} members` : 'Unlimited'} />}
-            <InfoItem label="Infrastructure" value="AWS (Northern Virginia)" />
-            {isExecutive && <InfoItem label="Support Tier" value="24/7 Concierge" />}
-          </div>
+
+          {!isExecutive && (
+            <div className="bg-surface rounded-xl p-8 border border-border shadow-sm">
+              <div className="flex justify-between items-center mb-8 pb-4 border-b border-border">
+                <h3 className="font-bold text-sm uppercase tracking-widest text-text-muted">PDF Knowledge Base</h3>
+                <button 
+                  onClick={() => onScenariosClick()}
+                  className="text-[10px] font-black text-primary uppercase tracking-widest hover:underline"
+                >
+                  View Library
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {pdfs.slice(0, 2).map((pdf) => (
+                  <div key={pdf.id} className="p-4 bg-gray-50 rounded-xl border border-border flex items-center gap-4">
+                    <div className="p-3 bg-white rounded-lg text-primary shadow-sm">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 flex-grow">
+                      <div className="font-black text-[10px] uppercase truncate">{pdf.name}</div>
+                      <div className="text-[9px] font-bold text-text-muted mt-0.5">
+                        {scenarios.filter(s => s.pdfSource === pdf.name).length} Generated Scenarios
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {pdfs.length === 0 && (
+                  <div className="col-span-full py-8 text-center border-2 border-dashed border-border rounded-xl">
+                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">No documents uploaded yet</p>
+                    <button 
+                      onClick={() => onScenariosClick()}
+                      className="text-[10px] font-black text-primary uppercase tracking-widest mt-2 block mx-auto"
+                    >
+                      Initialize Archive
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -400,52 +534,125 @@ function DashboardView({ org, plan, executives, currentExecutive, onCoachingClic
 }
 
 function SubscriptionView({ plans, currentPlan, onUpdatePlan }: { plans: PricingPlan[], currentPlan: PricingPlan, onUpdatePlan: (plan: PricingPlan) => void }) {
+  const [showHistory, setShowHistory] = React.useState(false);
+
   return (
     <div className="space-y-10">
       <div className="bg-surface border border-border rounded-xl p-8 shadow-sm">
-        <h3 className="font-bold text-sm uppercase tracking-widest text-text-muted mb-8 pb-4 border-b border-border">Current Subscription</h3>
-        <div className="grid md:grid-cols-3 gap-6">
-          {plans.map((plan) => (
-            <div 
-              key={plan.id}
-              className={`p-6 rounded-xl border transition-all ${
-                currentPlan.id === plan.id 
-                  ? 'border-primary bg-indigo-50/50 ring-1 ring-primary' 
-                  : 'border-border bg-gray-50/50'
-              }`}
+        <div className="flex justify-between items-center mb-8 pb-4 border-b border-border">
+          <h3 className="font-bold text-sm uppercase tracking-widest text-text-muted">Subscription Management</h3>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setShowHistory(false)}
+              className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${!showHistory ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-gray-100 text-text-muted hover:bg-gray-200'}`}
             >
-              <div className="flex justify-between items-start mb-4">
-                <h4 className="font-bold text-text-main">{plan.name}</h4>
-                {currentPlan.id === plan.id && (
-                  <span className="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full font-bold">ACTIVE</span>
-                )}
-              </div>
-              <div className="text-2xl font-black mb-4">${plan.price}<span className="text-sm font-medium text-text-muted">/mo</span></div>
-              <button 
-                disabled={currentPlan.id === plan.id}
-                onClick={() => onUpdatePlan(plan)}
-                className={`w-full py-2 rounded-lg text-xs font-bold transition-all ${
-                  currentPlan.id === plan.id 
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
-                    : 'bg-primary text-white hover:bg-opacity-90'
-                }`}
-              >
-                {currentPlan.id === plan.id ? 'Current Plan' : 'Switch Plan'}
-              </button>
-            </div>
-          ))}
+              Plans
+            </button>
+            <button 
+              onClick={() => setShowHistory(true)}
+              className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${showHistory ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-gray-100 text-text-muted hover:bg-gray-200'}`}
+            >
+              History
+            </button>
+          </div>
         </div>
+
+        {!showHistory ? (
+          <div>
+            <div className="mb-8 p-4 bg-indigo-50 border border-primary/20 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Your Active Selection</p>
+                <p className="text-sm font-bold text-text-main">{currentPlan.name} — ${currentPlan.price}/month</p>
+              </div>
+              <div className="px-3 py-1 bg-primary text-white text-[9px] font-black uppercase tracking-widest rounded-full">Pro Status</div>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6">
+              {plans.map((plan) => (
+                <div 
+                  key={plan.id}
+                  className={`p-6 rounded-xl border transition-all ${
+                    currentPlan.id === plan.id 
+                      ? 'border-primary bg-indigo-50/50 ring-1 ring-primary shadow-xl shadow-primary/5' 
+                      : 'border-border bg-white hover:border-text-muted'
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <h4 className="font-black text-xs uppercase tracking-widest text-text-main italic">{plan.name}</h4>
+                    {currentPlan.id === plan.id && (
+                      <span className="bg-primary text-white text-[9px] px-2 py-0.5 rounded font-black tracking-tighter">SELECTED</span>
+                    )}
+                  </div>
+                  <div className="text-3xl font-black mb-4 tracking-tighter">${plan.price}<span className="text-sm font-medium text-text-muted">/mo</span></div>
+                  
+                  <div className="space-y-2 mb-8">
+                    {plan.features.slice(0, 3).map((f, i) => (
+                      <div key={i} className="flex items-center gap-2 text-[9px] font-bold text-text-muted uppercase">
+                        <div className="w-1 h-1 bg-primary rounded-full" /> {f}
+                      </div>
+                    ))}
+                  </div>
+
+                  <button 
+                    disabled={currentPlan.id === plan.id}
+                    onClick={() => onUpdatePlan(plan)}
+                    className={`w-full py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                      currentPlan.id === plan.id 
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                        : 'bg-black text-white hover:bg-primary shadow-lg hover:shadow-primary/20'
+                    }`}
+                  >
+                    {currentPlan.id === plan.id ? 'Active Plan' : (plan.price > currentPlan.price ? 'Upgrade' : 'Downgrade')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-4 px-4 text-[10px] font-black uppercase tracking-widest text-text-muted mb-2">
+              <div>Invoice</div>
+              <div>Date</div>
+              <div>Amount</div>
+              <div>Status</div>
+            </div>
+            <PaymentRow date="Nov 12, 2023" amount={currentPlan.price} status="Paid" invoice="#INV-8821" />
+            <PaymentRow date="Oct 12, 2023" amount={currentPlan.price} status="Paid" invoice="#INV-8710" />
+            <PaymentRow date="Sep 12, 2023" amount={currentPlan.price} status="Paid" invoice="#INV-8605" />
+            <PaymentRow date="Aug 12, 2023" amount={currentPlan.price} status="Paid" invoice="#INV-8501" />
+          </div>
+        )}
       </div>
 
       <div className="bg-surface border border-border rounded-xl p-8 shadow-sm">
         <div className="flex items-center justify-between mb-8 pb-4 border-b border-border">
-          <h3 className="font-bold text-sm uppercase tracking-widest text-text-muted">Payment History</h3>
-          <History className="w-4 h-4 text-text-muted" />
+          <h3 className="font-bold text-sm uppercase tracking-widest text-text-muted">Billing Identity</h3>
+          <ShieldCheck className="w-4 h-4 text-primary" />
         </div>
-        <div className="space-y-4">
-          <PaymentRow date="Nov 12, 2023" amount={currentPlan.price} status="Paid" invoice="#INV-8821" />
-          <PaymentRow date="Oct 12, 2023" amount={currentPlan.price} status="Paid" invoice="#INV-8710" />
-          <PaymentRow date="Sep 12, 2023" amount={currentPlan.price} status="Paid" invoice="#INV-8605" />
+        <div className="grid md:grid-cols-2 gap-8">
+          <div className="space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-widest text-text-muted">Default Method</p>
+            <div className="flex items-center gap-4 bg-gray-50 border border-border rounded-xl p-4">
+              <div className="w-10 h-7 bg-black rounded flex items-center justify-center text-white font-black text-[10px] italic">VISA</div>
+              <div>
+                <p className="text-xs font-black italic">•••• •••• •••• 4242</p>
+                <p className="text-[9px] font-bold text-text-muted uppercase">Expires 12/28</p>
+              </div>
+              <button className="ml-auto text-[9px] font-black text-primary uppercase tracking-widest hover:underline">Edit</button>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-widest text-text-muted">Next Invoice</p>
+            <div className="flex items-center gap-4 bg-gray-50 border border-border rounded-xl p-4">
+              <div className="w-10 h-10 bg-white border border-border rounded-xl flex items-center justify-center">
+                <Calendar className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs font-black italic">Dec 12, 2023</p>
+                <p className="text-[9px] font-bold text-text-muted uppercase">Amount: ${currentPlan.price}.00</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -996,6 +1203,7 @@ function ScenarioManagementView({
   const [showLibraryGenModal, setShowLibraryGenModal] = React.useState(false);
   const [libraryGenPdf, setLibraryGenPdf] = React.useState<UploadedPDF | null>(null);
   const [libraryGenNum, setLibraryGenNum] = React.useState(3);
+  const [uploadMode, setUploadMode] = React.useState<'full' | 'context-only'>('full');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const generateFromLibrary = async (pdf: UploadedPDF, count: number) => {
@@ -1049,68 +1257,92 @@ function ScenarioManagementView({
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
     setIsUploading(true);
+    const newPdfs: UploadedPDF[] = [];
+    const allNewScenarios: RolePlayScenario[] = [];
+
     try {
-      const prompt = `Based on the context of a document titled "${file.name}":
-      1. Generate a detailed "Organizational Context Summary" (approx 300 words) that describes the specific policies, rules, and behavioral expectations this document likely contains (simulate that you have read it).
-      2. Generate exactly ${numScenarios} leadership roleplay scenarios. Each scenario must follow this JSON structure:
-      {
-        "title": "Short catchy title",
-        "category": "Conflict" | "Strategy" | "Ethics" | "Crisis" | "Negotiation",
-        "description": "2-3 sentence context",
-        "initialMessage": "The first thing the antagonist says to the user"
+      for (const file of files) {
+        const prompt = uploadMode === 'full' 
+          ? `Based on the context of a document titled "${file.name}":
+            1. Generate a detailed "Organizational Context Summary" (approx 300 words) that describes the specific policies, rules, and behavioral expectations this document likely contains (simulate that you have read it).
+            2. Generate exactly ${numScenarios} leadership roleplay scenarios. Each scenario must follow this JSON structure:
+            {
+              "title": "Short catchy title",
+              "category": "Conflict" | "Strategy" | "Ethics" | "Crisis" | "Negotiation",
+              "description": "2-3 sentence context",
+              "initialMessage": "The first thing the antagonist says to the user"
+            }
+            
+            Return your response in this format:
+            [CONTEXT_START]
+            <The detailed summary here>
+            [CONTEXT_END]
+            [JSON_START]
+            <The JSON array here>
+            [JSON_END]`
+          : `Based on the context of a document titled "${file.name}", generate a detailed "Organizational Context Summary" (approx 300 words) that describes the specific policies, rules, and behavioral expectations this document likely contains (simulate that you have read it).
+            
+            Return your response in this format:
+            [CONTEXT_START]
+            <The detailed summary here>
+            [CONTEXT_END]`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: [{ role: 'user', parts: [{ text: prompt }] }]
+        });
+
+        const text = response.text || '';
+        
+        // Extract Context
+        const contextMatch = text.match(/\[CONTEXT_START\]([\s\S]*?)\[CONTEXT_END\]/);
+        const extractedContext = contextMatch ? contextMatch[1].trim() : 'No context available.';
+
+        // Extract JSON (only if in full mode)
+        let jsonStr = '[]';
+        if (uploadMode === 'full') {
+          const jsonMatch = text.match(/\[JSON_START\]([\s\S]*?)\[JSON_END\]/);
+          jsonStr = jsonMatch ? jsonMatch[1].trim() : '[]';
+        }
+        
+        // Create PDF record
+        const pdfId = `pdf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const newPdf: UploadedPDF = {
+          id: pdfId,
+          name: file.name,
+          timestamp: Date.now(),
+          extractedContext
+        };
+        
+        newPdfs.push(newPdf);
+
+        if (uploadMode === 'full') {
+          try {
+            const generated = JSON.parse(jsonStr) as Partial<RolePlayScenario>[];
+            const completeScenarios = generated.map((s, idx) => ({
+              ...s,
+              id: `gen-${pdfId}-${idx}`,
+              pdfSource: file.name,
+              category: s.category || 'Strategy'
+            })) as RolePlayScenario[];
+
+            allNewScenarios.push(...completeScenarios);
+          } catch (e) {
+            console.error("JSON Parse Error for file:", file.name, e);
+          }
+        }
       }
-      
-      Return your response in this format:
-      [CONTEXT_START]
-      <The detailed summary here>
-      [CONTEXT_END]
-      [JSON_START]
-      <The JSON array here>
-      [JSON_END]`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ role: 'user', parts: [{ text: prompt }] }]
-      });
-
-      const text = response.text || '';
-      
-      // Extract Context
-      const contextMatch = text.match(/\[CONTEXT_START\]([\s\S]*?)\[CONTEXT_END\]/);
-      const extractedContext = contextMatch ? contextMatch[1].trim() : 'No context available.';
-
-      // Extract JSON
-      const jsonMatch = text.match(/\[JSON_START\]([\s\S]*?)\[JSON_END\]/);
-      const jsonStr = jsonMatch ? jsonMatch[1].trim() : '[]';
-      
-      // Create PDF record
-      const pdfId = Date.now().toString();
-      const newPdf: UploadedPDF = {
-        id: pdfId,
-        name: file.name,
-        timestamp: Date.now(),
-        extractedContext
-      };
-      
-      onUpdatePdfs([...pdfs, newPdf]);
-
-      try {
-        const generated = JSON.parse(jsonStr) as Partial<RolePlayScenario>[];
-        const completeScenarios = generated.map((s, idx) => ({
-          ...s,
-          id: `gen-${pdfId}-${idx}`,
-          pdfSource: file.name,
-          category: s.category || 'Strategy'
-        })) as RolePlayScenario[];
-
-        onUpdateScenarios([...scenarios, ...completeScenarios]);
+      onUpdatePdfs([...pdfs, ...newPdfs]);
+      if (allNewScenarios.length > 0) {
+        onUpdateScenarios([...scenarios, ...allNewScenarios]);
         setActiveTab('generator');
-      } catch (e) {
-        console.error("JSON Parse Error:", e);
+      } else {
+        setActiveTab('library');
       }
     } catch (error) {
       console.error("Upload/Generation Error:", error);
@@ -1164,7 +1396,16 @@ function ScenarioManagementView({
           </div>
         </div>
 
-        {activeTab === 'generator' ? (
+        <input 
+        type="file" 
+        accept=".pdf" 
+        multiple
+        onChange={handleFileUpload}
+        className="hidden"
+        ref={fileInputRef}
+      />
+
+      {activeTab === 'generator' ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
             {/* Upload Sidebar */}
             <div className="lg:col-span-1 space-y-8">
@@ -1191,18 +1432,13 @@ function ScenarioManagementView({
                       <option value={10}>10 Scenarios</option>
                     </select>
                   </div>
-
-                  <input 
-                    type="file" 
-                    accept=".pdf" 
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    ref={fileInputRef}
-                  />
                   
                   <button 
                     disabled={isUploading}
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => {
+                      setUploadMode('full');
+                      setTimeout(() => fileInputRef.current?.click(), 0);
+                    }}
                     className={`w-full py-6 rounded-2xl border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-3 group ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     {isUploading ? (
@@ -1279,7 +1515,20 @@ function ScenarioManagementView({
           </div>
         ) : (
           <div className="space-y-8">
-            <h3 className="text-xs font-black uppercase tracking-widest text-text-muted px-4">PDF Document Archive</h3>
+            <div className="flex justify-between items-center px-4">
+              <h3 className="text-xs font-black uppercase tracking-widest text-text-muted">PDF Document Archive</h3>
+              <button 
+                onClick={() => {
+                  setUploadMode('context-only');
+                  setTimeout(() => fileInputRef.current?.click(), 10);
+                }}
+                disabled={isUploading}
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:shadow-lg shadow-primary/20 transition-all disabled:opacity-50"
+              >
+                {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                Upload New Document
+              </button>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {pdfs.map((p) => (
                 <div key={p.id} className="bg-white border border-border rounded-xl p-8 shadow-sm group hover:border-primary transition-all">
@@ -1761,18 +2010,120 @@ function HealthItem({ label, status }: { label: string, status: string }) {
   );
 }
 
+function ClientsView() {
+  const [clients, setClients] = React.useState([
+    { id: '1', name: 'John Doe', email: 'john@example.com', type: 'Individual', plan: 'Executive Pro', status: 'active', joined: 'Oct 24, 2023' },
+    { id: '2', name: 'Global Tech Corp', email: 'admin@gtc.com', type: 'Organization', plan: 'Enterprise', status: 'active', joined: 'Nov 12, 2023' },
+    { id: '3', name: 'Sarah Wilson', email: 'sarah.w@freelance.io', type: 'Individual', plan: 'Executive Pro', status: 'blocked', joined: 'Dec 05, 2023' },
+    { id: '4', name: 'Innovate AI', email: 'ops@innovate.ai', type: 'Organization', plan: 'Starter', status: 'active', joined: 'Jan 15, 2024' },
+  ]);
+
+  const toggleStatus = (id: string) => {
+    setClients(prev => prev.map(c => 
+      c.id === id ? { ...c, status: c.status === 'active' ? 'blocked' : 'active' } : c
+    ));
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-end mb-4">
+        <div>
+          <h2 className="text-4xl font-black uppercase tracking-tighter italic italic">Client Registry</h2>
+          <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1">Manage global user permissions & deployment status</p>
+        </div>
+        <div className="flex gap-2 text-[10px] font-black uppercase tracking-widest text-text-muted border-b-2 border-border pb-1">
+          <span className="text-primary">{clients.length} Total</span>
+          <span>•</span>
+          <span>{clients.filter(c => c.status === 'active').length} Active</span>
+        </div>
+      </div>
+
+      <div className="bg-surface border-4 border-black rounded-2xl shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-black text-white text-[10px] uppercase font-black tracking-widest">
+                <th className="px-8 py-5">User / Client</th>
+                <th className="px-8 py-5">Attributes</th>
+                <th className="px-8 py-5">Subscription</th>
+                <th className="px-8 py-5">Timeline</th>
+                <th className="px-8 py-5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {clients.map((client) => (
+                <tr key={client.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${client.type === 'Organization' ? 'bg-indigo-100' : 'bg-orange-100'}`}>
+                        {client.name[0]}
+                      </div>
+                      <div>
+                        <div className="font-black text-xs uppercase tracking-tight italic">{client.name}</div>
+                        <div className="text-[10px] font-bold text-text-muted">{client.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="flex flex-col gap-1.5">
+                      <span className={`w-fit px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border-2 ${client.type === 'Organization' ? 'border-primary/20 bg-primary/5 text-primary' : 'border-orange-200 bg-orange-50 text-orange-600'}`}>
+                        {client.type}
+                      </span>
+                      <span className={`w-fit px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${client.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {client.status === 'active' ? 'AUTHORIZED' : 'REVOKED'}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="font-black text-[10px] uppercase tracking-widest text-text-main">{client.plan}</div>
+                    <div className="text-[9px] font-bold text-text-muted mt-0.5">Recurring Monthly</div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{client.joined}</div>
+                  </td>
+                  <td className="px-8 py-6 text-right">
+                    <div className="flex justify-end gap-2">
+                       <button 
+                        onClick={() => toggleStatus(client.id)}
+                        className={`p-2 rounded-lg border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all ${client.status === 'active' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}
+                        title={client.status === 'active' ? 'Block Access' : 'Allow Access'}
+                      >
+                        {client.status === 'active' ? <Ban className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                      </button>
+                      <button className="p-2 bg-white rounded-lg border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all">
+                        <Settings className="w-4 h-4 text-text-muted" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PaymentRow({ date, amount, status, invoice }: { date: string, amount: number, status: string, invoice: string }) {
   return (
-    <div className="flex justify-between items-center p-4 bg-bg border border-border rounded-lg text-sm">
-      <div className="flex items-center gap-6">
-        <span className="font-bold text-text-main">{date}</span>
-        <span className="text-text-muted text-xs font-medium">{invoice}</span>
+    <div className="flex items-center justify-between p-4 bg-white border border-border rounded-xl hover:border-primary transition-all group">
+      <div className="grid grid-cols-4 flex-grow items-center">
+        <div className="flex items-center gap-3">
+          <Receipt className="w-4 h-4 text-text-muted group-hover:text-primary" />
+          <span className="text-xs font-black italic">{invoice}</span>
+        </div>
+        <div className="text-[10px] font-bold text-text-muted uppercase">{date}</div>
+        <div className="text-xs font-black tracking-tighter">${amount}.00</div>
+        <div>
+          <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[9px] font-black uppercase tracking-widest">
+            {status}
+          </span>
+        </div>
       </div>
-      <div className="flex items-center gap-8">
-        <span className="font-black text-text-main">${amount}.00</span>
-        <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">{status}</span>
-        <button className="text-primary hover:underline text-xs font-bold uppercase tracking-widest">Download</button>
-      </div>
+      <button className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
+        <Download className="w-4 h-4 text-text-muted" />
+      </button>
     </div>
   );
 }

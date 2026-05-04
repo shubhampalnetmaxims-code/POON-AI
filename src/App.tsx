@@ -9,11 +9,14 @@ import { AppStep, PricingPlan, OrganizationDetails, RolePlayScenario, UploadedPD
 import LandingPage from './components/LandingPage.tsx';
 import PaymentStep from './components/PaymentStep.tsx';
 import OnboardingStep from './components/OnboardingStep.tsx';
+import UserTypeStep from './components/UserTypeStep.tsx';
+import IndividualOnboardingStep from './components/IndividualOnboardingStep.tsx';
 import PortalStep from './components/PortalStep.tsx';
 import { SUBSCRIPTION_PLANS, ROLE_PLAY_SCENARIOS, MOCK_SUBSCRIPTIONS } from './constants.ts';
 
 export default function App() {
   const [step, setStep] = useState<AppStep>('landing');
+  const [userType, setUserType] = useState<'individual' | 'organization' | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<PricingPlan | null>(null);
   const [orgDetails, setOrgDetails] = useState<OrganizationDetails | null>(null);
   const [plans, setPlans] = useState<PricingPlan[]>(() => {
@@ -77,12 +80,13 @@ export default function App() {
       setStep('portal');
       return true;
     }
-    if (email === 'shubham@gmail.com' && pass === 'Abcd@123') {
+    if ((email === 'shubham@gmail.com' || email === 'shubhampal.netmaxims@gmail.com') && pass === 'Abcd@123') {
       const defaultOrg: OrganizationDetails = {
         name: 'Shubham Org',
-        email: 'shubham@gmail.com',
+        email: email,
         billingAddress: '123 Tech Lane, Silicon Valley',
-        employeeCount: '10'
+        employeeCount: '10',
+        isAdmin: true
       };
       setOrgDetails(defaultOrg);
       
@@ -130,7 +134,7 @@ export default function App() {
 
   const handleSelectPlan = (plan: PricingPlan) => {
     setSelectedPlan(plan);
-    setStep('onboarding');
+    setStep('user-type');
   };
 
   const handleOnboardingComplete = (details: OrganizationDetails) => {
@@ -160,12 +164,23 @@ export default function App() {
             onLogin={handleLogin}
           />
         )}
+
+        {step === 'user-type' && (
+          <UserTypeStep
+            key="user-type"
+            onSelect={(type) => {
+              setUserType(type);
+              setStep(type === 'individual' ? 'onboarding-individual' : 'onboarding');
+            }}
+            onBack={() => setStep('landing')}
+          />
+        )}
         
         {step === 'payment' && selectedPlan && (
           <PaymentStep 
             key="payment"
             plan={selectedPlan}
-            onBack={() => setStep('onboarding')}
+            onBack={() => setStep(userType === 'individual' ? 'onboarding-individual' : 'onboarding')}
             onSuccess={handlePaymentSuccess}
           />
         )}
@@ -173,9 +188,25 @@ export default function App() {
         {step === 'onboarding' && (
           <OnboardingStep 
             key="onboarding"
-            plans={plans}
-            onBack={() => setStep('landing')}
+            onBack={() => setStep('user-type')}
             onComplete={handleOnboardingComplete}
+          />
+        )}
+
+        {step === 'onboarding-individual' && (
+          <IndividualOnboardingStep 
+            key="onboarding-individual"
+            onBack={() => setStep('user-type')}
+            onComplete={(email, password) => {
+              // Create a skeleton org for individual
+              setOrgDetails({
+                name: 'Personal Account',
+                email: email,
+                billingAddress: 'N/A',
+                employeeCount: '1'
+              });
+              setStep('payment');
+            }}
           />
         )}
 
