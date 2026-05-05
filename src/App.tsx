@@ -86,7 +86,7 @@ export default function App() {
         email: email,
         billingAddress: '123 Tech Lane, Silicon Valley',
         employeeCount: '10',
-        isAdmin: true
+        isAdmin: false
       };
       setOrgDetails(defaultOrg);
       
